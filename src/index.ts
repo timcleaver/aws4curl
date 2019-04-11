@@ -31,6 +31,11 @@ aws4curl options:
   --aws-region AWS Region to sign requests with (required)
   --aws-service AWS Service (required)
 
+AWS Credentials:
+Environment variables AWS_ACCESS_KEY and AWS_SECRET_KEY must be defined.
+If AWS_SESSION_TOKEN is available, it will be used to generate the header
+"X-Amz-Security-Token"
+
 curl options:
   Every flag and argument will be passed to your installed curl
 `);
@@ -53,8 +58,6 @@ function addHeader(to: string[], headers: any, header: string) {
 export function run() {
   let { argv } = process;
 
-  validateCredentials();
-
   // Remove initial two args (node and file)
   argv.splice(0, 2);
 
@@ -67,6 +70,8 @@ export function run() {
   if (parsedArgs.help) {
     return help();
   }
+
+  validateCredentials();
 
   // Get AWS Region
   const region = parsedArgs['aws-region'];

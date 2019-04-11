@@ -1,4 +1,4 @@
-# aws4curl
+# aws4curl [![Build Status](https://travis-ci.org/carlosbaraza/aws4curl.svg?branch=master)](https://travis-ci.org/carlosbaraza/aws4curl)
 
 curl, but with AWS Signature Version 4
 
