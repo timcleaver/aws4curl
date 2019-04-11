@@ -88,8 +88,8 @@ export function run() {
   removeArg(argv, '--aws-service', 2);
 
   // Get URL
-  const url = argv.find(arg => isUrl(arg));
-  if (!url) {
+  const url = parsedArgs._[0];
+  if (!isUrl(url)) {
     throw new Error('An URL is required for curl to work');
   }
   const parsedUrl = urlParser(url);
