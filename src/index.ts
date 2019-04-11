@@ -1,5 +1,7 @@
 import { parse as urlParser } from 'url';
 import { curl } from './curl';
+import { validateCredentials } from './credentials';
+import { getHeaders, getBody, getMethod } from './args';
 
 const isUrl = require('is-url');
 const aws4 = require('aws4');
@@ -11,6 +13,7 @@ interface AWS4Options {
   region: string;
   service: string;
   body?: string;
+  method?: string;
   headers?: any;
 }
 
@@ -33,18 +36,27 @@ curl options:
 `);
 }
 
+function removeArg(argv: any, arg: string, numberFollowing: number) {
+  const index = argv.indexOf(arg);
+  if (index !== -1) {
+    return argv.splice(index, numberFollowing);
+  }
+}
+
+function addHeader(to: string[], headers: any, header: string) {
+  if (headers[header]) {
+    to.push('-H');
+    to.push(`${header}: ${headers[header]}`);
+  }
+}
+
 export function run() {
   let { argv } = process;
 
+  validateCredentials();
+
   // Remove initial two args (node and file)
   argv.splice(0, 2);
-
-  let removeArg = (arg: string, numberFollowing: number) => {
-    const index = argv.indexOf(arg);
-    if (index !== -1) {
-      argv.splice(index, numberFollowing);
-    }
-  };
 
   const parsedArgs = minimist(argv);
 
@@ -56,23 +68,25 @@ export function run() {
     return help();
   }
 
+  // Get AWS Region
   const region = parsedArgs['aws-region'];
   if (typeof region !== 'string') {
     throw new Error('--aws-region is mandatory (e.g. eu-central-1)');
   }
-  removeArg('--aws-region', 2);
+  removeArg(argv, '--aws-region', 2);
 
+  // Get AWS Service
   const service = parsedArgs['aws-service'];
   if (typeof service !== 'string') {
     throw new Error('--aws-service is mandatory (e.g. execute-api)');
   }
-  removeArg('--aws-service', 2);
+  removeArg(argv, '--aws-service', 2);
 
+  // Get URL
   const url = argv.find(arg => isUrl(arg));
   if (!url) {
     throw new Error('An URL is required for curl to work');
   }
-
   const parsedUrl = urlParser(url);
   const { host, path } = parsedUrl;
   if (!host) {
@@ -82,32 +96,39 @@ export function run() {
     throw new Error('URL does not have a valid path');
   }
 
+  // Handle curl headers
+  const headers = getHeaders(parsedArgs);
+
+  // Remove all headers, we will add them back later after signing them
+  while (removeArg(argv, '-H', 2)) {}
+  while (removeArg(argv, '--header', 2)) {}
+
+  const body = getBody(parsedArgs);
+  const method = getMethod(parsedArgs);
+
   const options: AWS4Options = {
     host,
     path,
     region,
-    service
+    service,
+    headers,
+    body,
+    method
   };
 
+  // Finally, sign the request, which mutates the variable
   aws4.sign(options);
+
   if (!options.headers) {
     throw new Error('The signature could not be created');
   }
 
+  // Build curl arguments
   const curlArgs: string[] = [];
-  const addHeaderIfAvailable = (header: string) => {
-    if (options.headers[header]) {
-      curlArgs.push('-H');
-      curlArgs.push(`${header}: ${options.headers[header]}`);
-    }
-  };
 
-  addHeaderIfAvailable('Host');
-  addHeaderIfAvailable('X-Amz-Date');
-  addHeaderIfAvailable('X-Amz-Security-Token');
-  addHeaderIfAvailable('Content-Type');
-  addHeaderIfAvailable('Content-Length');
-  addHeaderIfAvailable('Authorization');
+  Object.keys(options.headers).forEach(headerKey => {
+    addHeader(curlArgs, options.headers, headerKey);
+  });
   curlArgs.push(...argv);
 
   curl(curlArgs);

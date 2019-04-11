@@ -21,13 +21,6 @@ curl options:
   Every flag and argument will be passed to your installed curl
 ```
 
-# To do
-
-- [ ] Read other headers passed to curl and pass them to `aws4.sign`
-- [ ] Read body and pass it to `aws4.sign`
-- [ ] Add some tests
-- [ ] Refactor code to increase readability
-
 # Contributing
 
 Thank you for checking this project out! The project is MIT licensed
