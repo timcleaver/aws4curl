@@ -12,6 +12,7 @@
     "@types/is-url": "^1.2.28",
     "@types/minimist": "^1.2.0",
     "@types/string-argv": "^0.1.0",
+    "aws-sdk": "^2.524.0",
     "aws4": "^1.8.0",
     "is-url": "^1.2.4",
     "minimist": "^1.2.0",

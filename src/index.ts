@@ -1,6 +1,6 @@
 import { parse as urlParser } from 'url';
 import { curl } from './curl';
-import { validateCredentials } from './credentials';
+import { getCredentials } from './credentials';
 import { getHeaders, getBody, getMethod } from './args';
 
 const isUrl = require('is-url');
@@ -28,13 +28,16 @@ curl, but with AWS Signature Version 4
 usage: aws4curl [aws4curl options] [curl options]
 
 aws4curl options:
-  --aws-region AWS Region to sign requests with (required)
+  --aws-region AWS Region to sign requests with (Default: us-east-1)
   --aws-service AWS Service (required)
+  --aws-profile AWS profile
 
 AWS Credentials:
-Environment variables AWS_ACCESS_KEY and AWS_SECRET_KEY must be defined.
-If AWS_SESSION_TOKEN is available, it will be used to generate the header
-"X-Amz-Security-Token"
+If AWS_PROFILE or a profile is provided on via --aws-profile then the credentials
+are extracted from the shared credentials file (default: '~/.aws/credentials' and
+~/.aws/config or defined by AWS_SHARED_CREDENTIALS_FILE process env var). Otherwise
+use the AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY env vars if set. Lastly, attempt
+to use the instance credentials.
 
 curl options:
   Every flag and argument will be passed to your installed curl
@@ -57,6 +60,8 @@ function addHeader(to: string[], headers: any, header: string) {
 
 export function run() {
   let { argv } = process;
+  // override this so that the config file is consulted when looking for profiles
+  process.env.AWS_SDK_LOAD_CONFIG = true;
 
   // Remove initial two args (node and file)
   argv.splice(0, 2);
@@ -71,13 +76,14 @@ export function run() {
     return help();
   }
 
-  validateCredentials();
+  // Get profile
+  const profile = parsedArgs['aws-profile'];
+  if (typeof profile === 'string') {
+    removeArg(argv, '--aws-profile', 2);
+  }
 
   // Get AWS Region
-  const region = parsedArgs['aws-region'];
-  if (typeof region !== 'string') {
-    throw new Error('--aws-region is mandatory (e.g. eu-central-1)');
-  }
+  const region = parsedArgs['aws-region'] || process.env.AWS_DEFAULT_REGION || process.env.AWS_REGION || 'eu-west-1';
   removeArg(argv, '--aws-region', 2);
 
   // Get AWS Service
@@ -87,54 +93,58 @@ export function run() {
   }
   removeArg(argv, '--aws-service', 2);
 
-  // Get URL
-  const url = parsedArgs._[0];
-  if (!isUrl(url)) {
-    throw new Error('An URL is required for curl to work');
-  }
-  const parsedUrl = urlParser(url);
-  const { host, path } = parsedUrl;
-  if (!host) {
-    throw new Error('URL does not have a valid host');
-  }
-  if (!path) {
-    throw new Error('URL does not have a valid path');
-  }
+  const credentials = getCredentials(profile);
+  credentials.getPromise().then(() => {
+    // Get URL
+    const url = parsedArgs._[0];
+    if (!isUrl(url)) {
+      throw new Error('A URL is required for curl to work');
+    }
+    const parsedUrl = urlParser(url);
+    const { host, path } = parsedUrl;
+    if (!host) {
+      throw new Error('URL does not have a valid host');
+    }
+    if (!path) {
+      throw new Error('URL does not have a valid path');
+    }
 
-  // Handle curl headers
-  const headers = getHeaders(parsedArgs);
+    // Handle curl headers
+    const headers = getHeaders(parsedArgs);
 
-  // Remove all headers, we will add them back later after signing them
-  while (removeArg(argv, '-H', 2)) {}
-  while (removeArg(argv, '--header', 2)) {}
+    // Remove all headers, we will add them back later after signing them
+    while (removeArg(argv, '-H', 2)) {}
+    while (removeArg(argv, '--header', 2)) {}
 
-  const body = getBody(parsedArgs);
-  const method = getMethod(parsedArgs);
+    const body = getBody(parsedArgs);
+    const method = getMethod(parsedArgs);
 
-  const options: AWS4Options = {
-    host,
-    path,
-    region,
-    service,
-    headers,
-    body,
-    method
-  };
+    const options: AWS4Options = {
+      host,
+      path,
+      region,
+      service,
+      headers,
+      body,
+      method
+    };
 
-  // Finally, sign the request, which mutates the variable
-  aws4.sign(options);
+    // Finally, sign the request, which mutates the variable
+    aws4.sign(options, credentials);
 
-  if (!options.headers) {
-    throw new Error('The signature could not be created');
-  }
+    if (!options.headers) {
+      throw new Error('The signature could not be created');
+    }
 
-  // Build curl arguments
-  const curlArgs: string[] = [];
+    // Build curl arguments
+    const curlArgs: string[] = [];
 
-  Object.keys(options.headers).forEach(headerKey => {
-    addHeader(curlArgs, options.headers, headerKey);
-  });
-  curlArgs.push(...argv);
+    Object.keys(options.headers).forEach(headerKey => {
+      addHeader(curlArgs, options.headers, headerKey);
+    });
+    curlArgs.push(...argv);
 
-  curl(curlArgs);
+    curl(curlArgs);
+  },
+  (err) => console.error(err));
 }
