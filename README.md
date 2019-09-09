@@ -2,7 +2,7 @@
 
 curl, but with AWS Signature Version 4
 
-# Installation
+# Installation (refers to upstream, not this fork)
 
 ```
 npm i -g aws4curl
@@ -14,13 +14,16 @@ npm i -g aws4curl
 usage: aws4curl [aws4curl options] [curl options]
 
 aws4curl options:
-  --aws-region AWS Region to sign requests with (required)
+  --aws-region AWS Region to sign requests with (Default: us-east-1)
   --aws-service AWS Service (required)
+  --aws-profile AWS profile
 
 AWS Credentials:
-Environment variables AWS_ACCESS_KEY and AWS_SECRET_KEY must be defined.
-If AWS_SESSION_TOKEN is available, it will be used to generate the header
-"X-Amz-Security-Token"
+If AWS_PROFILE or a profile is provided on via --aws-profile then the credentials
+are extracted from the shared credentials file (default: '~/.aws/credentials' and
+~/.aws/config or defined by AWS_SHARED_CREDENTIALS_FILE process env var). Otherwise
+use the AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY env vars if set. Lastly, attempt
+to use the instance credentials.
 
 curl options:
   Every flag and argument will be passed to your installed curl
